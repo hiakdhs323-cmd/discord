@@ -1,15 +1,21 @@
-name: Build Local AI APK
+name: Build and Release Local AI APK
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v6
-        with: {distribution: temurin, java-version: '17'}
+        with:
+          distribution: temurin
+          java-version: '17'
       - uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
@@ -18,7 +24,18 @@ jobs:
       - name: Build llama-server
         run: |
           git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
-          cmake -S /tmp/llama.cpp -B /tmp/llama.cpp/build-android -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$ANDROID_SDK_ROOT/ndk/29.0.14206865/build/cmake/android.toolchain.cmake" -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 -DGGML_NATIVE=OFF -DGGML_CPU_KLEIDIAI=ON -DGGML_OPENMP=OFF -DGGML_LLAMAFILE=OFF -DLLAMA_OPENSSL=OFF -DGGML_OPENCL=OFF -DBUILD_SHARED_LIBS=OFF
+          cmake -S /tmp/llama.cpp -B /tmp/llama.cpp/build-android \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_SDK_ROOT/ndk/29.0.14206865/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DGGML_NATIVE=OFF \
+            -DGGML_CPU_KLEIDIAI=ON \
+            -DGGML_OPENMP=OFF \
+            -DGGML_LLAMAFILE=OFF \
+            -DLLAMA_OPENSSL=OFF \
+            -DGGML_OPENCL=OFF \
+            -DBUILD_SHARED_LIBS=OFF
           cmake --build /tmp/llama.cpp/build-android --config Release --target llama-server --parallel 2
           mkdir -p app/src/main/assets
           cp /tmp/llama.cpp/build-android/bin/llama-server app/src/main/assets/llama-server
@@ -26,11 +43,21 @@ jobs:
         run: |
           curl -L https://services.gradle.org/distributions/gradle-8.10.2-bin.zip -o /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /opt
-          echo "/opt/gradle-8.10.2/bin" >> $GITHUB_PATH
+          echo "/opt/gradle-8.10.2/bin" >> "$GITHUB_PATH"
       - name: Build APK
         run: gradle assembleDebug --no-daemon
-      - uses: actions/upload-artifact@v4
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
         with:
           name: Local-AI-Server-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+      - name: Publish APK to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v0.1.${{ github.run_number }}
+        run: |
+          gh release create "$RELEASE_TAG" app/build/outputs/apk/debug/app-debug.apk \
+            --repo "${{ github.repository }}" \
+            --title "Local AI Server $RELEASE_TAG" \
+            --generate-notes
