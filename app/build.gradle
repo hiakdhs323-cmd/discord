@@ -1,0 +1,6 @@
+plugins { id 'com.android.application' }
+
+android { namespace 'com.hiakdhs323.localai'; compileSdk 35
+    defaultConfig { applicationId 'com.hiakdhs323.localai'; minSdk 28; targetSdk 35; versionCode 1; versionName '0.1.0' }
+    buildTypes { release { minifyEnabled false; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro' } }
+}
