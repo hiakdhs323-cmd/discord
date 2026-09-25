@@ -7,6 +7,8 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.StatFs;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.widget.*;
 import java.io.*;
@@ -26,18 +28,24 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
+        Thread.setDefaultUncaughtExceptionHandler((t,e)->writeFatalCrash(e));
         setContentView(R.layout.activity_main);
         status=findViewById(R.id.status); progress=findViewById(R.id.progress);
         url=findViewById(R.id.modelUrl); name=findViewById(R.id.modelName);
         url.setText(DEFAULT_URL); name.setText(DEFAULT_NAME);
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},10);
+            new Handler(Looper.getMainLooper()).postDelayed(()->{ try { requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},10); } catch(Throwable ignored){} },1200);
         findViewById(R.id.download).setOnClickListener(v->downloadModel());
         findViewById(R.id.start).setOnClickListener(v->startServer());
         findViewById(R.id.stop).setOnClickListener(v->stopServer());
         File model=modelFile();
-        if(model.exists() && model.length()>500000000L){ status.setText("● 모델 설치 완료 · AI 서버 시작 중"); startServer(); }
-        else { status.setText("● 첫 실행 · Qwen3 모델 자동 설치"); downloadModel(); }
+        new Handler(Looper.getMainLooper()).postDelayed(()->{
+            try {
+                File current=modelFile();
+                if(current.exists() && current.length()>500000000L){ status.setText("● 모델 설치 완료 · AI 서버 시작 중"); startServer(); }
+                else { status.setText("● 첫 실행 · Qwen3 모델 자동 설치"); downloadModel(); }
+            } catch(Throwable e) { status.setText("● 초기화 실패 · error.log 확인"); writeFatalCrash(e); }
+        },500);
     }
 
     private File modelFile(){
@@ -97,6 +105,13 @@ public class MainActivity extends Activity {
             if(Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);
             status.setText("● AI 서버 실행 중 · 화면 꺼짐 유지");}
         catch(Exception e){status.setText("● 서버 시작 실패");Toast.makeText(this,"서버 시작 실패: "+e.getMessage(),Toast.LENGTH_LONG).show();}
+    }
+
+    private void writeFatalCrash(Throwable e){
+        try(FileWriter w=new FileWriter(new File(getFilesDir(),"error.log"),true)){
+            w.write(new java.util.Date()+" [MainActivity FATAL] "+e+"\\n");
+            for(StackTraceElement x:e.getStackTrace()) w.write("  at "+x+"\\n");
+        }catch(Throwable ignored){}
     }
 
     private void stopServer(){try{stopService(new Intent(this,AiServerService.class));}catch(Exception ignored){}status.setText("● 서버 중지됨");}
